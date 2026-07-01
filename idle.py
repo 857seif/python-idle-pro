@@ -12,11 +12,164 @@ import shutil
 import time
 import webbrowser
 from uuid import uuid4 as uniquename
-from tkinter import filedialog, messagebox, Text, Scrollbar, RIGHT, Y, LEFT, BOTH, END, Toplevel, Listbox, StringVar
+from tkinter import filedialog, messagebox, Text, Scrollbar, RIGHT, Y, LEFT, BOTH, END, Toplevel, Listbox, StringVar, Menu, Tk
 
-import customtkinter as ctk
+# Try to import customtkinter, fallback to tkinter if not available
+try:
+    import customtkinter as ctk
+    CTK_AVAILABLE = True
+except ImportError:
+    CTK_AVAILABLE = False
+    print("⚠️ customtkinter not found, using tkinter fallback")
+    # Create a minimal compatibility layer
+    class ctk:
+        class CTk(Tk):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
 
-LANG = 'en'
+        class CTkFrame:
+            def __init__(self, master, **kwargs):
+                self.frame = Tk.Frame(master)
+                self._kwargs = kwargs
+            def pack(self, **kwargs):
+                self.frame.pack(**kwargs)
+            def winfo_children(self):
+                return self.frame.winfo_children()
+            def winfo_ismapped(self):
+                return self.frame.winfo_ismapped()
+            def destroy(self):
+                self.frame.destroy()
+
+        class CTkButton:
+            def __init__(self, master, text="", command=None, width=100, height=28, fg_color=None, hover_color=None, font=None, **kwargs):
+                self.btn = Tk.Button(master, text=text, command=command, width=width//10)
+                self._command = command
+            def pack(self, **kwargs):
+                self.btn.pack(**kwargs)
+            def configure(self, **kwargs):
+                if 'text' in kwargs:
+                    self.btn.configure(text=kwargs['text'])
+                if 'fg_color' in kwargs:
+                    self.btn.configure(bg=kwargs['fg_color'])
+
+        class CTkLabel:
+            def __init__(self, master, text="", font=None, text_color=None, **kwargs):
+                self.lbl = Tk.Label(master, text=text)
+            def pack(self, **kwargs):
+                self.lbl.pack(**kwargs)
+            def configure(self, **kwargs):
+                if 'text' in kwargs:
+                    self.lbl.configure(text=kwargs['text'])
+
+        class CTkEntry:
+            def __init__(self, master, placeholder_text="", width=100, height=28, textvariable=None, **kwargs):
+                self.entry = Tk.Entry(master, width=width//10)
+                self._placeholder = placeholder_text
+            def pack(self, **kwargs):
+                self.entry.pack(**kwargs)
+            def get(self):
+                return self.entry.get()
+            def delete(self, a, b):
+                self.entry.delete(a, b)
+            def insert(self, pos, text):
+                self.entry.insert(pos, text)
+            def bind(self, event, callback):
+                self.entry.bind(event, callback)
+
+        class CTkTextbox:
+            def __init__(self, master, wrap="word", font=None, height=100, border_width=0, fg_color=None, **kwargs):
+                self.text = Text(master, wrap=wrap, height=height//20)
+            def pack(self, **kwargs):
+                self.text.pack(**kwargs)
+            def insert(self, pos, text):
+                self.text.insert(pos, text)
+            def see(self, pos):
+                self.text.see(pos)
+            def delete(self, a, b):
+                self.text.delete(a, b)
+
+        class CTkCheckBox:
+            def __init__(self, master, text="", variable=None, font=None, **kwargs):
+                self.cb = Tk.Checkbutton(master, text=text, variable=variable)
+            def grid(self, **kwargs):
+                self.cb.grid(**kwargs)
+
+        class CTkProgressBar:
+            def __init__(self, master, width=280, height=16, corner_radius=8):
+                self.bar = Tk.Frame(master, width=width, height=height, bg="#333")
+                self.fill = Tk.Frame(self.bar, width=0, height=height, bg="#00ff00")
+                self.fill.place(x=0, y=0)
+            def pack(self, **kwargs):
+                self.bar.pack(**kwargs)
+            def set(self, value):
+                max_width = self.bar.winfo_width() or 280
+                self.fill.configure(width=int(max_width * value))
+
+        class CTkComboBox:
+            def __init__(self, master, values=[], variable=None, font=None, width=300, **kwargs):
+                self.var = variable or StringVar()
+                self.combo = Tk.OptionMenu(master, self.var, *values)
+            def pack(self, **kwargs):
+                self.combo.pack(**kwargs)
+
+        class CTkScrollableFrame:
+            def __init__(self, master, label_text="", corner_radius=8, width=350, fg_color=None, height=200, **kwargs):
+                self.frame = Tk.Frame(master)
+                self.label = Tk.Label(self.frame, text=label_text)
+                self.label.pack()
+                self.canvas = Tk.Canvas(self.frame, width=width, height=height)
+                self.canvas.pack(side="left", fill="both", expand=True)
+                self.scrollbar = Scrollbar(self.frame, orient="vertical", command=self.canvas.yview)
+                self.scrollbar.pack(side="right", fill="y")
+                self.canvas.configure(yscrollcommand=self.scrollbar.set)
+                self.inner = Tk.Frame(self.canvas)
+                self.canvas.create_window((0,0), window=self.inner, anchor="nw")
+            def pack(self, **kwargs):
+                self.frame.pack(**kwargs)
+            def winfo_children(self):
+                return self.inner.winfo_children()
+
+        class CTkToplevel:
+            def __init__(self, master):
+                self.window = Toplevel(master)
+            def title(self, text):
+                self.window.title(text)
+            def geometry(self, geo):
+                self.window.geometry(geo)
+            def resizable(self, a, b):
+                self.window.resizable(a, b)
+            def transient(self, master):
+                self.window.transient(master)
+            def grab_set(self):
+                self.window.grab_set()
+            def destroy(self):
+                self.window.destroy()
+
+        class BooleanVar:
+            def __init__(self, value=False):
+                self.var = Tk.BooleanVar(value=value)
+            def get(self):
+                return self.var.get()
+            def set(self, value):
+                self.var.set(value)
+
+        class StringVar:
+            def __init__(self, value=""):
+                self.var = Tk.StringVar(value=value)
+            def get(self):
+                return self.var.get()
+            def set(self, value):
+                self.var.set(value)
+
+        @staticmethod
+        def set_appearance_mode(mode):
+            pass
+
+        @staticmethod
+        def set_default_color_theme(theme):
+            pass
+
+LANG = 'ar'  # Default to Arabic since user is Arabic
 TEXTS = {
     'en': {
         'APP_TITLE': "🐍 Python IDLE Pro — Professional Integrated Editor",
@@ -243,8 +396,9 @@ T = TEXTS[LANG]
 
 PROGRAM_PATH = os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__)
 
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+if CTK_AVAILABLE:
+    ctk.set_appearance_mode("Dark")
+    ctk.set_default_color_theme("blue")
 
 class CTOCEntry:
     def __init__(self, position, cmprsdDataSize, uncmprsdDataSize, cmprsFlag, typeCmprsData, name):
@@ -523,13 +677,17 @@ class PyInstArchive:
                 else:
                     self._writePyc(filePath, data, base_dir)
 
-class PyManagerPro(ctk.CTk):
+
+class PyManagerPro(ctk.CTk if CTK_AVAILABLE else Tk):
     def __init__(self):
-        super().__init__()
+        if CTK_AVAILABLE:
+            super().__init__()
+        else:
+            Tk.__init__(self)
 
         self.title(T['APP_TITLE'])
         self.minsize(1024, 600)
-        self.option_add("*Font", "Cairo 12")
+        self.option_add("*Font", "Arial 12")
 
         self.config_file = os.path.join(os.path.expanduser("~"), ".pymanager_config.json")
         self.load_config()
@@ -553,18 +711,37 @@ class PyManagerPro(ctk.CTk):
         self.autocomplete_index = 0
         self.current_word = ""
 
-        self.main_paned = ctk.CTkFrame(self, fg_color="transparent")
+        # Main container
+        if CTK_AVAILABLE:
+            self.main_paned = ctk.CTkFrame(self, fg_color="transparent")
+        else:
+            self.main_paned = Tk.Frame(self)
         self.main_paned.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self.editor_frame = ctk.CTkFrame(self.main_paned, corner_radius=10, fg_color="#0d0d1a")
+        # Editor frame
+        if CTK_AVAILABLE:
+            self.editor_frame = ctk.CTkFrame(self.main_paned, corner_radius=10, fg_color="#0d0d1a")
+        else:
+            self.editor_frame = Tk.Frame(self.main_paned, bg="#0d0d1a")
         self.editor_frame.pack(side="left", fill="both", expand=True, padx=(0, 8))
 
-        self.tab_bar = ctk.CTkFrame(self.editor_frame, fg_color="transparent", height=32)
+        # Tab bar
+        if CTK_AVAILABLE:
+            self.tab_bar = ctk.CTkFrame(self.editor_frame, fg_color="transparent", height=32)
+        else:
+            self.tab_bar = Tk.Frame(self.editor_frame, height=32)
         self.tab_bar.pack(fill="x", padx=6, pady=(6, 0))
-        self.tab_slider = ctk.CTkFrame(self.tab_bar, fg_color="transparent")
+        if CTK_AVAILABLE:
+            self.tab_slider = ctk.CTkFrame(self.tab_bar, fg_color="transparent")
+        else:
+            self.tab_slider = Tk.Frame(self.tab_bar)
         self.tab_slider.pack(side="left", fill="both", expand=True)
 
-        self.editor_toolbar = ctk.CTkFrame(self.editor_frame, fg_color="transparent")
+        # Toolbar
+        if CTK_AVAILABLE:
+            self.editor_toolbar = ctk.CTkFrame(self.editor_frame, fg_color="transparent")
+        else:
+            self.editor_toolbar = Tk.Frame(self.editor_frame)
         self.editor_toolbar.pack(fill="x", padx=6, pady=(3, 0))
 
         btn_new = ctk.CTkButton(self.editor_toolbar, text=T['BTN_NEW'], width=70, height=26,
@@ -585,23 +762,45 @@ class PyManagerPro(ctk.CTk):
         btn_close_tab.pack(side="left", padx=5)
 
         self.file_status_label = ctk.CTkLabel(self.editor_toolbar, text=T['STATUS_UNSAVED'],
-                                              font=("Cairo", 11, "bold"), text_color="#88ddff")
+                                              font=("Arial", 11, "bold"), text_color="#88ddff")
         self.file_status_label.pack(side="right", padx=10)
 
-        self.editor_container = ctk.CTkFrame(self.editor_frame, fg_color="transparent")
+        # Editor container
+        if CTK_AVAILABLE:
+            self.editor_container = ctk.CTkFrame(self.editor_frame, fg_color="transparent")
+        else:
+            self.editor_container = Tk.Frame(self.editor_frame)
         self.editor_container.pack(fill="both", expand=True, padx=6, pady=(3, 6))
 
+        # Line numbers
         self.line_numbers = Text(self.editor_container, width=4, padx=3, pady=3, takefocus=0,
-                                 font=("Cairo", 12), background="#1e1e2e", foreground="#8888aa",
+                                 font=("Arial", 12), background="#1e1e2e", foreground="#8888aa",
                                  relief="flat", borderwidth=0, state="disabled")
         self.line_numbers.pack(side="left", fill="y")
 
-        self.editor = Text(self.editor_container, wrap="none", font=("Cairo", 12),
+        # Main editor - NOW WITH KEYBOARD SHORTCUTS ENABLED BY DEFAULT
+        self.editor = Text(self.editor_container, wrap="none", font=("Arial", 12),
                            background="#0d0d1a", foreground="#eeeeee",
                            insertbackground="white", relief="flat", borderwidth=0,
                            highlightthickness=0, undo=True)
         self.editor.pack(side="left", fill="both", expand=True)
 
+        # Enable default keyboard shortcuts (Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+A)
+        # The Text widget already supports these by default, but we ensure they work
+
+        # Context menu
+        self.editor_context_menu = Menu(self.editor, tearoff=0)
+        self.editor_context_menu.add_command(label="Cut", command=lambda: self.editor.event_generate("<<Cut>>"))
+        self.editor_context_menu.add_command(label="Copy", command=lambda: self.editor.event_generate("<<Copy>>"))
+        self.editor_context_menu.add_command(label="Paste", command=lambda: self.editor.event_generate("<<Paste>>"))
+        self.editor_context_menu.add_command(label="Select All", command=lambda: self.editor.event_generate("<<SelectAll>>"))
+        self.editor.bind("<Button-3>", self.show_editor_context_menu)
+
+        # Bind keyboard shortcuts explicitly
+        self.editor.bind("<Control-c>", lambda e: self._copy_text())
+        self.editor.bind("<Control-v>", lambda e: self._paste_text())
+        self.editor.bind("<Control-x>", lambda e: self._cut_text())
+        self.editor.bind("<Control-a>", lambda e: self._select_all())
         self.editor.bind("<KeyRelease>", self.on_editor_change)
         self.editor.bind("<MouseWheel>", self.on_editor_scroll)
         self.editor.bind("<Button-4>", self.on_editor_scroll)
@@ -611,16 +810,22 @@ class PyManagerPro(ctk.CTk):
         self.editor.bind("<Control-space>", self.show_autocomplete)
         self.editor.bind("<Escape>", self.hide_autocomplete)
 
+        # Scrollbar
         self.editor_vscroll = Scrollbar(self.editor_container, orient="vertical",
                                         command=self.on_editor_vscroll)
         self.editor_vscroll.pack(side="right", fill="y")
         self.editor.config(yscrollcommand=self.editor_vscroll.set)
         self.line_numbers.config(yscrollcommand=self.on_line_scroll)
 
-        self.control_frame = ctk.CTkScrollableFrame(
-            self.main_paned, corner_radius=10, width=350,
-            fg_color="#111125", label_text=T['PANEL_TITLE']
-        )
+        # Control panel
+        if CTK_AVAILABLE:
+            self.control_frame = ctk.CTkScrollableFrame(
+                self.main_paned, corner_radius=10, width=350,
+                fg_color="#111125", label_text=T['PANEL_TITLE']
+            )
+        else:
+            self.control_frame = Tk.Frame(self.main_paned, width=350)
+            self.control_frame.pack_propagate(False)
         self.control_frame.pack(side="right", fill="both", padx=(8, 0))
 
         self._build_control_panel()
@@ -630,6 +835,7 @@ class PyManagerPro(ctk.CTk):
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+        # Keyboard shortcuts for the whole app
         self.bind_all("<Control-s>", lambda e: self.save_file())
         self.bind_all("<Control-o>", lambda e: self.open_file())
         self.bind_all("<Control-n>", lambda e: self.new_file())
@@ -638,13 +844,57 @@ class PyManagerPro(ctk.CTk):
 
         self.autocomplete_active = False
 
+    def _copy_text(self):
+        """Copy selected text to clipboard"""
+        try:
+            selected = self.editor.selection_get()
+            self.clipboard_clear()
+            self.clipboard_append(selected)
+        except:
+            pass
+        return "break"
+
+    def _paste_text(self):
+        """Paste text from clipboard"""
+        try:
+            text = self.clipboard_get()
+            self.editor.insert("insert", text)
+        except:
+            pass
+        return "break"
+
+    def _cut_text(self):
+        """Cut selected text"""
+        try:
+            selected = self.editor.selection_get()
+            self.clipboard_clear()
+            self.clipboard_append(selected)
+            self.editor.delete("sel.first", "sel.last")
+        except:
+            pass
+        return "break"
+
+    def _select_all(self):
+        """Select all text in editor"""
+        self.editor.tag_add("sel", "1.0", "end")
+        return "break"
+
+    def show_editor_context_menu(self, event):
+        self.editor_context_menu.post(event.x_root, event.y_root)
+
     def get_python_interpreter(self):
+        """Get the correct Python interpreter - FIXED VERSION"""
+        # First, try to find a system Python that's different from frozen executable
         if getattr(sys, 'frozen', False):
+            # We're running as a frozen executable
+            # Try common Python commands
             for cmd in ['python', 'python3', 'py']:
                 python_path = shutil.which(cmd)
                 if python_path:
                     if os.path.abspath(python_path) != os.path.abspath(sys.executable):
                         return python_path
+
+            # Try py launcher on Windows
             try:
                 result = subprocess.run(['py', '-3', '-c', 'import sys; print(sys.executable)'],
                                         capture_output=True, text=True)
@@ -654,6 +904,8 @@ class PyManagerPro(ctk.CTk):
                         return py_path
             except:
                 pass
+
+            # Check common installation paths
             common_paths = [
                 r"C:\Python313\python.exe",
                 r"C:\Python312\python.exe",
@@ -663,39 +915,66 @@ class PyManagerPro(ctk.CTk):
                 r"C:\Python38\python.exe",
                 r"C:\Users\{}\AppData\Local\Programs\Python\Python313\python.exe".format(os.getenv('USERNAME')),
                 r"C:\Users\{}\AppData\Local\Programs\Python\Python312\python.exe".format(os.getenv('USERNAME')),
+                r"C:\Users\{}\AppData\Local\Programs\Python\Python311\python.exe".format(os.getenv('USERNAME')),
+                r"C:\Users\{}\AppData\Local\Programs\Python\Python310\python.exe".format(os.getenv('USERNAME')),
             ]
             for path in common_paths:
                 if os.path.exists(path):
                     if os.path.abspath(path) != os.path.abspath(sys.executable):
                         return path
+
+            # If we can't find another Python, use current but warn
+            self.log("⚠️ Warning: Using frozen executable as interpreter. Arabic variables may not work.")
             return sys.executable
         else:
+            # Running from source - use current interpreter
             return sys.executable
 
     def _build_control_panel(self):
-        quick_frame = ctk.CTkFrame(self.control_frame, fg_color="transparent")
+        # Quick actions
+        if CTK_AVAILABLE:
+            quick_frame = ctk.CTkFrame(self.control_frame, fg_color="transparent")
+        else:
+            quick_frame = Tk.Frame(self.control_frame)
         quick_frame.pack(fill="x", padx=10, pady=(10, 4))
         ctk.CTkButton(quick_frame, text=T['BTN_NEW_PROJECT'], width=120, height=28,
                       command=self.new_project, fg_color="#2a6bb0").pack(side="left", padx=2)
         ctk.CTkButton(quick_frame, text=T['BTN_REQUIREMENTS'], width=120, height=28,
                       command=self.generate_requirements, fg_color="#008f4c").pack(side="left", padx=2)
 
-        analyze_frame = ctk.CTkFrame(self.control_frame, fg_color="transparent")
+        # Analyze frame
+        if CTK_AVAILABLE:
+            analyze_frame = ctk.CTkFrame(self.control_frame, fg_color="transparent")
+        else:
+            analyze_frame = Tk.Frame(self.control_frame)
         analyze_frame.pack(fill="x", padx=10, pady=(4, 4))
         ctk.CTkButton(analyze_frame, text=T['BTN_ANALYZE'], width=130, height=30,
                       command=self.analyze_editor_code, fg_color="#6b2ab0").pack(side="left", padx=4)
         ctk.CTkButton(analyze_frame, text=T['BTN_INSTALL_MISSING'], width=140, height=30,
                       command=self.install_missing_libs, fg_color="#008f4c").pack(side="right", padx=4)
 
-        self.lib_scroll_frame = ctk.CTkScrollableFrame(
-            self.control_frame, label_text=T['LIBS_TITLE'],
-            corner_radius=8, height=120
-        )
+        # Libraries scroll frame
+        if CTK_AVAILABLE:
+            self.lib_scroll_frame = ctk.CTkScrollableFrame(
+                self.control_frame, label_text=T['LIBS_TITLE'],
+                corner_radius=8, height=120
+            )
+        else:
+            self.lib_scroll_frame = Tk.Frame(self.control_frame)
+            Tk.Label(self.lib_scroll_frame, text=T['LIBS_TITLE']).pack()
         self.lib_scroll_frame.pack(fill="both", expand=True, padx=10, pady=(4, 8))
-        self.libs_container = ctk.CTkFrame(self.lib_scroll_frame, fg_color="transparent")
+
+        if CTK_AVAILABLE:
+            self.libs_container = ctk.CTkFrame(self.lib_scroll_frame, fg_color="transparent")
+        else:
+            self.libs_container = Tk.Frame(self.lib_scroll_frame)
         self.libs_container.pack(fill="both", expand=True, padx=4, pady=4)
 
-        tools_frame = ctk.CTkFrame(self.control_frame, fg_color="transparent")
+        # Tools frame
+        if CTK_AVAILABLE:
+            tools_frame = ctk.CTkFrame(self.control_frame, fg_color="transparent")
+        else:
+            tools_frame = Tk.Frame(self.control_frame)
         tools_frame.pack(fill="x", padx=10, pady=5)
         ctk.CTkButton(tools_frame, text=T['BTN_FORMAT'], width=110, height=28,
                       command=self.format_code, fg_color="#2a6bb0").pack(side="left", padx=2)
@@ -704,22 +983,33 @@ class PyManagerPro(ctk.CTk):
         ctk.CTkButton(tools_frame, text=T['BTN_TERMINAL'], width=100, height=28,
                       command=self.toggle_terminal, fg_color="#6b2ab0").pack(side="left", padx=2)
 
-        self.terminal_frame = ctk.CTkFrame(self.control_frame, fg_color="#0a0a1a", corner_radius=6)
+        # Terminal frame
+        if CTK_AVAILABLE:
+            self.terminal_frame = ctk.CTkFrame(self.control_frame, fg_color="#0a0a1a", corner_radius=6)
+        else:
+            self.terminal_frame = Tk.Frame(self.control_frame, bg="#0a0a1a")
         self.terminal_frame.pack(fill="both", expand=True, padx=10, pady=5)
         self.terminal_frame.pack_forget()
 
-        self.terminal_text = ctk.CTkTextbox(self.terminal_frame, wrap="word", font=("Cairo", 11), height=100)
+        self.terminal_text = ctk.CTkTextbox(self.terminal_frame, wrap="word", font=("Arial", 11), height=100)
         self.terminal_text.pack(fill="both", expand=True, padx=4, pady=4)
         self.terminal_entry = ctk.CTkEntry(self.terminal_frame, placeholder_text="Enter command...")
         self.terminal_entry.pack(fill="x", padx=4, pady=(0,4))
         self.terminal_entry.bind("<Return>", self.execute_terminal_command)
 
-        build_frame = ctk.CTkFrame(self.control_frame, corner_radius=8, fg_color="#1a1a30")
+        # Build frame
+        if CTK_AVAILABLE:
+            build_frame = ctk.CTkFrame(self.control_frame, corner_radius=8, fg_color="#1a1a30")
+        else:
+            build_frame = Tk.Frame(self.control_frame, bg="#1a1a30")
         build_frame.pack(fill="x", padx=10, pady=8)
 
-        ctk.CTkLabel(build_frame, text=T['BUILD_TITLE'], font=("Cairo", 12, "bold")).pack(anchor="w", padx=8, pady=4)
+        ctk.CTkLabel(build_frame, text=T['BUILD_TITLE'], font=("Arial", 12, "bold")).pack(anchor="w", padx=8, pady=4)
 
-        opt_grid = ctk.CTkFrame(build_frame, fg_color="transparent")
+        if CTK_AVAILABLE:
+            opt_grid = ctk.CTkFrame(build_frame, fg_color="transparent")
+        else:
+            opt_grid = Tk.Frame(build_frame)
         opt_grid.pack(fill="x", padx=8, pady=4)
 
         self.onefile_var = ctk.BooleanVar(value=True)
@@ -727,16 +1017,16 @@ class PyManagerPro(ctk.CTk):
         self.windowed_var = ctk.BooleanVar(value=False)
         self.pyarmor_var = ctk.BooleanVar(value=False)
 
-        ctk.CTkCheckBox(opt_grid, text=T['CHECK_ONEFILE'], variable=self.onefile_var, font=("Cairo", 11)).grid(row=0, column=0, sticky="w", pady=1)
-        ctk.CTkCheckBox(opt_grid, text=T['CHECK_NOCONSOLE'], variable=self.noconsole_var, font=("Cairo", 11)).grid(row=1, column=0, sticky="w", pady=1)
-        ctk.CTkCheckBox(opt_grid, text=T['CHECK_WINDOWED'], variable=self.windowed_var, font=("Cairo", 11)).grid(row=2, column=0, sticky="w", pady=1)
-        ctk.CTkCheckBox(opt_grid, text=T['CHECK_PYARMOR'], variable=self.pyarmor_var, font=("Cairo", 11)).grid(row=3, column=0, sticky="w", pady=1)
+        ctk.CTkCheckBox(opt_grid, text=T['CHECK_ONEFILE'], variable=self.onefile_var, font=("Arial", 11)).grid(row=0, column=0, sticky="w", pady=1)
+        ctk.CTkCheckBox(opt_grid, text=T['CHECK_NOCONSOLE'], variable=self.noconsole_var, font=("Arial", 11)).grid(row=1, column=0, sticky="w", pady=1)
+        ctk.CTkCheckBox(opt_grid, text=T['CHECK_WINDOWED'], variable=self.windowed_var, font=("Arial", 11)).grid(row=2, column=0, sticky="w", pady=1)
+        ctk.CTkCheckBox(opt_grid, text=T['CHECK_PYARMOR'], variable=self.pyarmor_var, font=("Arial", 11)).grid(row=3, column=0, sticky="w", pady=1)
 
-        ctk.CTkLabel(opt_grid, text=T['LABEL_FILENAME'], font=("Cairo", 11)).grid(row=0, column=1, sticky="w", padx=(15, 4))
+        ctk.CTkLabel(opt_grid, text=T['LABEL_FILENAME'], font=("Arial", 11)).grid(row=0, column=1, sticky="w", padx=(15, 4))
         self.output_name_entry = ctk.CTkEntry(opt_grid, placeholder_text="my_app", width=100, height=26)
         self.output_name_entry.grid(row=0, column=2, sticky="w", pady=1)
 
-        ctk.CTkLabel(opt_grid, text=T['LABEL_ICON'], font=("Cairo", 11)).grid(row=1, column=1, sticky="w", padx=(15, 4))
+        ctk.CTkLabel(opt_grid, text=T['LABEL_ICON'], font=("Arial", 11)).grid(row=1, column=1, sticky="w", padx=(15, 4))
         icon_sel = ctk.CTkFrame(opt_grid, fg_color="transparent")
         icon_sel.grid(row=1, column=2, sticky="w", pady=1)
         self.icon_path_var = ctk.StringVar(value="")
@@ -757,13 +1047,17 @@ class PyManagerPro(ctk.CTk):
         self.progress_bar = ctk.CTkProgressBar(build_frame, width=280, height=16, corner_radius=8)
         self.progress_bar.pack(pady=(6, 2), padx=8)
         self.progress_bar.set(0)
-        self.progress_label = ctk.CTkLabel(build_frame, text=T['PROGRESS_WAITING'], font=("Cairo", 11), text_color="#88ddff")
+        self.progress_label = ctk.CTkLabel(build_frame, text=T['PROGRESS_WAITING'], font=("Arial", 11), text_color="#88ddff")
         self.progress_label.pack(pady=(0, 4))
 
-        exe_extract_frame = ctk.CTkFrame(self.control_frame, corner_radius=8, fg_color="#1a1a30")
+        # EXE Extract frame
+        if CTK_AVAILABLE:
+            exe_extract_frame = ctk.CTkFrame(self.control_frame, corner_radius=8, fg_color="#1a1a30")
+        else:
+            exe_extract_frame = Tk.Frame(self.control_frame, bg="#1a1a30")
         exe_extract_frame.pack(fill="x", padx=10, pady=8)
 
-        ctk.CTkLabel(exe_extract_frame, text=T['EXTRACT_TITLE'], font=("Cairo", 12, "bold")).pack(anchor="w", padx=8, pady=4)
+        ctk.CTkLabel(exe_extract_frame, text=T['EXTRACT_TITLE'], font=("Arial", 12, "bold")).pack(anchor="w", padx=8, pady=4)
 
         exe_btn_frame = ctk.CTkFrame(exe_extract_frame, fg_color="transparent")
         exe_btn_frame.pack(fill="x", padx=8, pady=4)
@@ -773,16 +1067,21 @@ class PyManagerPro(ctk.CTk):
         ctk.CTkButton(exe_btn_frame, text=T['BTN_PYLINGUAL'], width=140, height=28,
                       command=lambda: webbrowser.open("https://pylingual.io/"), fg_color="#2a6bb0").grid(row=0, column=1, padx=4, pady=2)
 
-        log_frame = ctk.CTkFrame(self.control_frame, corner_radius=8, fg_color="#0a0a1a")
+        # Log frame
+        if CTK_AVAILABLE:
+            log_frame = ctk.CTkFrame(self.control_frame, corner_radius=8, fg_color="#0a0a1a")
+        else:
+            log_frame = Tk.Frame(self.control_frame, bg="#0a0a1a")
         log_frame.pack(fill="both", expand=True, padx=10, pady=(4, 10))
 
-        ctk.CTkLabel(log_frame, text=T['LOG_TITLE'], font=("Cairo", 11, "bold")).pack(anchor="w", padx=8, pady=4)
+        ctk.CTkLabel(log_frame, text=T['LOG_TITLE'], font=("Arial", 11, "bold")).pack(anchor="w", padx=8, pady=4)
 
         self.log_text = ctk.CTkTextbox(
-            log_frame, wrap="word", font=("Cairo", 11),
+            log_frame, wrap="word", font=("Arial", 11),
             height=100, border_width=0, fg_color="#0a0a1a"
         )
         self.log_text.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
 
     def load_config(self):
         default = {
@@ -797,7 +1096,8 @@ class PyManagerPro(ctk.CTk):
                 self.config = json.load(f)
         except:
             self.config = default
-        ctk.set_appearance_mode(self.config.get("theme", "Dark"))
+        if CTK_AVAILABLE:
+            ctk.set_appearance_mode(self.config.get("theme", "Dark"))
         self.geometry(self.config.get("window_geometry", "1280x700"))
 
     def save_config(self):
@@ -817,16 +1117,19 @@ class PyManagerPro(ctk.CTk):
     def add_tab(self, path=None, content=""):
         tab_id = str(self.next_tab_id)
         self.next_tab_id += 1
-        tab_frame = ctk.CTkFrame(self.tab_slider, fg_color="transparent")
+        if CTK_AVAILABLE:
+            tab_frame = ctk.CTkFrame(self.tab_slider, fg_color="transparent")
+        else:
+            tab_frame = Tk.Frame(self.tab_slider)
         tab_frame.pack(side="left", padx=1, pady=1)
         btn = ctk.CTkButton(tab_frame, text=os.path.basename(path) if path else T['TAB_UNSAVED'],
                             width=80, height=24, corner_radius=4,
                             fg_color="#2a2a4a", hover_color="#3a3a6a",
-                            font=("Cairo", 11),
+                            font=("Arial", 11),
                             command=lambda: self.switch_tab(tab_id))
         btn.pack(side="left")
         close_btn = ctk.CTkButton(tab_frame, text="✕", width=18, height=18, fg_color="#b02a2a",
-                                  hover_color="#d03a3a", font=("Cairo", 9),
+                                  hover_color="#d03a3a", font=("Arial", 9),
                                   command=lambda: self.close_tab(tab_id))
         close_btn.pack(side="left", padx=(0, 2))
         self.open_files[tab_id] = {
@@ -1064,7 +1367,7 @@ class PyManagerPro(ctk.CTk):
         dialog.transient(self)
         dialog.grab_set()
 
-        ctk.CTkLabel(dialog, text="Choose a project template:", font=("Cairo", 14, "bold")).pack(pady=10)
+        ctk.CTkLabel(dialog, text="Choose a project template:", font=("Arial", 14, "bold")).pack(pady=10)
 
         templates = [
             "📄 Blank",
@@ -1082,7 +1385,7 @@ class PyManagerPro(ctk.CTk):
         ]
 
         selected = StringVar(value=templates[0])
-        combo = ctk.CTkComboBox(dialog, values=templates, variable=selected, font=("Cairo", 12), width=300)
+        combo = ctk.CTkComboBox(dialog, values=templates, variable=selected, font=("Arial", 12), width=300)
         combo.pack(pady=10)
 
         def create_project():
@@ -1312,11 +1615,11 @@ plt.show()
 
     def _display_no_libs(self):
         self.clear_libs_display()
-        ctk.CTkLabel(self.libs_container, text="✅ All imports are built-in.", font=("Cairo", 12)).pack(pady=10)
+        ctk.CTkLabel(self.libs_container, text="✅ All imports are built-in.", font=("Arial", 12)).pack(pady=10)
 
     def _display_error(self, msg):
         self.clear_libs_display()
-        ctk.CTkLabel(self.libs_container, text=msg, font=("Cairo", 12), text_color="#ff4444").pack(pady=10)
+        ctk.CTkLabel(self.libs_container, text=msg, font=("Arial", 12), text_color="#ff4444").pack(pady=10)
 
     def _display_libs(self, external_libs):
         self.clear_libs_display()
@@ -1326,14 +1629,14 @@ plt.show()
             row.pack(fill="x", pady=1)
 
             var = ctk.BooleanVar(value=True)
-            cb = ctk.CTkCheckBox(row, text=lib, variable=var, font=("Cairo", 11, "bold"))
+            cb = ctk.CTkCheckBox(row, text=lib, variable=var, font=("Arial", 11, "bold"))
             cb.pack(side="left", padx=(4, 8))
             self.lib_checkboxes.append((lib, var))
 
             is_installed = self.check_lib_installed(lib)
             status = "✅ Installed" if is_installed else "❌ Not installed"
             color = "#66ff88" if is_installed else "#ff6688"
-            label = ctk.CTkLabel(row, text=status, font=("Cairo", 10), text_color=color)
+            label = ctk.CTkLabel(row, text=status, font=("Arial", 10), text_color=color)
             label.pack(side="left", padx=4)
             self.install_status_labels.append(label)
 
@@ -1422,6 +1725,7 @@ plt.show()
             return False
 
     def run_script(self):
+        """Run the current script - FIXED for Arabic variables"""
         if self.active_tab_id is None:
             messagebox.showinfo(T['DIALOG_INFO'], T['DIALOG_NO_FILE_RUN'])
             return
@@ -1448,10 +1752,14 @@ plt.show()
         is_gui = self._is_gui_script(file_path)
         python_exe = self.get_python_interpreter()
 
+        # Check if we found a proper interpreter
         if getattr(sys, 'frozen', False) and os.path.abspath(python_exe) == os.path.abspath(sys.executable):
             messagebox.showerror(T['DIALOG_ERROR'], T['DIALOG_PYTHON_NOT_FOUND'])
             self.stop_progress(False)
             return
+
+        self.log(f"ℹ️ Using interpreter: {python_exe}")
+        self.log(f"ℹ️ File: {file_path}")
 
         if is_gui:
             self.log(T['LOG_GUI_DETECTED'])
@@ -1488,20 +1796,24 @@ plt.show()
     def _run_non_gui(self, python_exe, file_path):
         try:
             if sys.platform == "win32":
+                cmd = [python_exe, "-i", file_path]
+                self.log(f"▶️ Running: {' '.join(cmd)}")
                 subprocess.Popen(
-                    ["cmd", "/c", "start", python_exe, file_path],
-                    shell=True,
+                    cmd,
+                    creationflags=subprocess.CREATE_NEW_CONSOLE,
                     stdout=None, stderr=None, stdin=None,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE
+                    close_fds=True
                 )
             else:
+                cmd = [python_exe, "-i", file_path]
+                self.log(f"▶️ Running: {' '.join(cmd)}")
                 terminals = [
-                    ["gnome-terminal", "--", python_exe, file_path],
-                    ["xterm", "-e", python_exe, file_path],
-                    ["konsole", "-e", python_exe, file_path],
-                    ["xfce4-terminal", "-e", python_exe, file_path],
-                    ["lxterminal", "-e", python_exe, file_path],
-                    ["terminator", "-e", python_exe, file_path],
+                    ["gnome-terminal", "--"] + cmd,
+                    ["xterm", "-hold", "-e"] + cmd,
+                    ["konsole", "-e"] + cmd,
+                    ["xfce4-terminal", "-e"] + cmd,
+                    ["lxterminal", "-e"] + cmd,
+                    ["terminator", "-e"] + cmd,
                 ]
                 executed = False
                 for term_cmd in terminals:
@@ -1512,7 +1824,7 @@ plt.show()
                     except FileNotFoundError:
                         continue
                 if not executed:
-                    subprocess.Popen([python_exe, file_path], stdout=None, stderr=None, stdin=None, start_new_session=True)
+                    subprocess.Popen(cmd, stdout=None, stderr=None, stdin=None, start_new_session=True)
             self.after(0, lambda: self.log(T['LOG_RUN_SUCCESS_NON_GUI']))
             self.after(0, lambda: self.stop_progress(True))
         except Exception as e:
@@ -1701,7 +2013,7 @@ plt.show()
         self.autocomplete_window.wm_overrideredirect(True)
         self.autocomplete_window.config(bg="#2a2a4a")
         listbox = Listbox(self.autocomplete_window, bg="#1e1e2e", fg="#eeeeee",
-                          font=("Cairo", 11), borderwidth=0, highlightthickness=0,
+                          font=("Arial", 11), borderwidth=0, highlightthickness=0,
                           selectbackground="#4a4a8a")
         listbox.pack(fill="both", expand=True)
         for item in suggestions:
